@@ -1,4 +1,4 @@
-# LineUp AR
+# Football Lineup — LineUp AR
 
 Video yuklab, tarkibni kiritib, `ON AIR` tugmasini bosish uchun tayyor local web-demo.
 
