@@ -1,0 +1,314 @@
+.tracking-status {
+  margin: 8px 1px 0;
+  color: #8692a9;
+  font-size: 10px;
+}
+.tracking-status.ready { color: var(--accent); }
+.tracking-status.working { color: #ffcf56; }
+.broadcast-top small { color: var(--accent); font-size: 9px; margin-left: 3px; }
+.player-card {
+  width: clamp(58px, 6.3vw, 104px);
+  height: clamp(78px, 8.5vw, 138px);
+  left: var(--base-left) !important;
+  top: var(--base-top) !important;
+}
+.broadcast-stage.tracked .player-card {
+  left: var(--track-left) !important;
+  top: var(--track-top) !important;
+  scale: var(--card-scale, 1);
+  transition: left .08s linear, top .08s linear, scale .08s linear;
+}
+.broadcast-stage.tracked .player-card.is-lost {
+  opacity: 0 !important;
+  transition: opacity .15s linear;
+}
+
+/* Broadcast-AR card treatment: a player card should read as a small 3D object
+   standing on the pitch, not as a large dashboard panel. */
+.player-card {
+  width: clamp(67px, 7.2vw, 120px);
+  height: clamp(92px, 10vw, 166px);
+  scale: var(--base-scale, .9);
+  rotate: var(--lean, 0deg);
+}
+.player-card .card-shape {
+  background: linear-gradient(153deg, #222942 0%, #090c16 47%, #02040a 100%);
+  border-top: 2px solid var(--accent);
+  clip-path: polygon(13% 0, 93% 0, 100% 9%, 88% 100%, 9% 100%, 0 90%, 0 10%);
+}
+.player-card .card-shape::after {
+  background: linear-gradient(132deg, transparent 42%, var(--team) 42.5%, transparent 59%);
+  opacity: .32;
+}
+.player-card .player-image {
+  inset: 4% 9% 26%;
+  filter: contrast(1.08) saturate(.92);
+  mask-image: linear-gradient(to bottom, #000 67%, transparent 100%);
+}
+.player-card .player-name {
+  bottom: 13%;
+  left: 10%;
+  right: 8%;
+  font-size: clamp(10px, 1vw, 16px);
+  text-shadow: 0 2px 3px #000;
+}
+.player-card .player-number {
+  top: 6%;
+  left: 9%;
+  font-size: clamp(13px, 1.3vw, 22px);
+  text-shadow: 0 2px 3px #000;
+}
+.player-card .card-stats {
+  bottom: 4%;
+  left: 9%;
+  right: 6%;
+  padding: 0;
+  background: transparent;
+  color: #e9edf3;
+  font-size: clamp(6px, .57vw, 9px);
+  letter-spacing: .1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.broadcast-stage.on-air .player-card .card-stats {
+  animation: card-stat-in .35s ease forwards;
+  animation-delay: calc(4.6s + var(--order) * .08s);
+}
+@keyframes card-stat-in { to { opacity: .82; bottom: 4%; } }
+.tactic-lines { display: none; }
+
+/* Fixed-camera operator preset ------------------------------------------------ */
+.control-actions {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.control-actions .primary-button {
+  grid-column: 1 / -1;
+}
+
+.team-presets {
+  display: grid;
+  gap: 10px;
+}
+
+.team-presets .section-title,
+.output-tools .section-title {
+  margin: 0;
+}
+
+.team-tabs,
+.output-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.team-tab,
+.output-actions .secondary-button,
+.import-button {
+  height: 34px;
+  border: 1px solid #343e55;
+  border-radius: 5px;
+  background: #151d30;
+  color: #c8d0dd;
+  font: 800 10px Inter, sans-serif;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+
+.team-tab.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--team) 38%, #101827);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.output-actions {
+  grid-template-columns: 1fr 1fr 1fr;
+  margin: 8px 0;
+}
+
+.output-actions .secondary-button {
+  width: 100%;
+}
+
+.import-button {
+  display: grid;
+  place-items: center;
+}
+
+.import-button input { display: none; }
+
+.safe-zone {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.safe-zone polygon {
+  fill: rgba(216, 255, 67, .08);
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 12 10;
+}
+
+.safe-zone text {
+  fill: rgba(216, 255, 67, .74);
+  font: 800 19px 'Barlow Condensed', sans-serif;
+  letter-spacing: 3px;
+  text-anchor: middle;
+}
+
+.broadcast-stage.layout-mode .safe-zone {
+  display: block;
+}
+
+.broadcast-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.broadcast-stage:fullscreen .broadcast-top,
+.broadcast-stage:fullscreen .sponsor-strip {
+  font-size: 18px;
+}
+
+.broadcast-stage.layout-mode::after {
+  content: 'JOYLA MODE  •  KARTANI MAYDONDAGI O‘RNIGA TORTING';
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border: 1px solid rgba(203, 255, 44, .65);
+  background: rgba(3, 10, 13, .82);
+  color: var(--accent);
+  font: 800 11px/1 'Barlow Condensed', sans-serif;
+  letter-spacing: .1em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.broadcast-stage.layout-mode .intro-card,
+.broadcast-stage.layout-mode .sponsor-strip {
+  display: none;
+}
+
+.broadcast-stage.layout-mode .player-card {
+  pointer-events: auto;
+  cursor: grab;
+  opacity: 1 !important;
+  transform: translate(-50%, -12%) !important;
+  filter: drop-shadow(0 8px 9px rgba(0, 0, 0, .5));
+  transition: left .08s linear, top .08s linear, filter .15s ease;
+}
+
+.broadcast-stage.layout-mode .player-card:hover {
+  filter: drop-shadow(0 0 0 2px rgba(203, 255, 44, .85)) drop-shadow(0 10px 13px rgba(0, 0, 0, .6));
+}
+
+.broadcast-stage.layout-mode .player-card:active {
+  cursor: grabbing;
+  z-index: 30 !important;
+}
+
+.broadcast-stage.layout-mode .card-stats {
+  opacity: .9 !important;
+  bottom: 4% !important;
+}
+
+.calibration-points {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.calibration-point {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: rgba(3, 10, 13, .78);
+  color: var(--accent);
+  font: 800 11px/1 'Barlow Condensed', sans-serif;
+  box-shadow: 0 0 0 5px rgba(203, 255, 44, .15);
+}
+
+.broadcast-stage.calibration-mode {
+  cursor: crosshair;
+}
+
+.broadcast-stage.calibration-mode .lineup-cards,
+.broadcast-stage.calibration-mode .intro-card,
+.broadcast-stage.calibration-mode .sponsor-strip {
+  display: none;
+}
+
+.broadcast-stage.calibration-mode::after {
+  content: '4 TA OQ CHIZIQ KESISHMASINI BOSING  •  1 / 4';
+}
+
+.broadcast-stage.calibration-mode.calibration-2::after { content: '4 TA OQ CHIZIQ KESISHMASINI BOSING  •  2 / 4'; }
+.broadcast-stage.calibration-mode.calibration-3::after { content: '4 TA OQ CHIZIQ KESISHMASINI BOSING  •  3 / 4'; }
+.broadcast-stage.calibration-mode.calibration-4::after { content: 'KALIBROVKA HISOBLANMOQDA…'; }
+
+@media (max-width: 640px) {
+  .broadcast-stage.layout-mode::after {
+    bottom: 12px;
+    font-size: 8px;
+    padding: 6px 8px;
+  }
+}
+
+/* On-air entrance: the physical card rises from the pitch and settles in its
+   tracked position.  Only transform/opacity are animated, so the tracker may
+   continue updating left/top independently while this plays. */
+.broadcast-stage.on-air .player-card {
+  animation: lineup-card-rise .9s cubic-bezier(.17, .9, .22, 1.12) both;
+  animation-delay: calc(2.05s + var(--group) * .62s + var(--group-index) * .12s);
+}
+
+.broadcast-stage.on-air .player-card .card-shape {
+  animation: lineup-card-glow 1.15s ease both;
+  animation-delay: calc(2.18s + var(--group) * .62s + var(--group-index) * .12s);
+}
+
+@keyframes lineup-card-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 145%) scale(.3) rotateX(38deg);
+    filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0));
+  }
+  54% {
+    opacity: 1;
+    transform: translate(-50%, -11%) scale(1.13) rotateX(-4deg);
+    filter: drop-shadow(0 20px 13px rgba(0, 0, 0, .55));
+  }
+  76% {
+    transform: translate(-50%, 3%) scale(.97) rotateX(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1) rotateX(0);
+    filter: drop-shadow(0 12px 8px rgba(0, 0, 0, .48));
+  }
+}
+
+@keyframes lineup-card-glow {
+  0%, 28% { box-shadow: inset 0 -1px 0 rgba(255,255,255,0); }
+  50% { box-shadow: inset 0 0 22px rgba(216,255,67,.34); }
+  100% { box-shadow: inset 0 -1px 0 rgba(255,255,255,.05); }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "football-lineup-ar",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": ".venv/bin/uvicorn server:app --host 127.0.0.1 --port 5174"
+  }
+}

@@ -1,0 +1,13 @@
+# Local runtimes and generated data
+.venv/
+.calib-venv/
+.runtime/
+__pycache__/
+*.py[cod]
+
+# Downloaded calibration research/model assets (large and not used by the app runtime)
+calibration/
+
+# OS/editor files
+.DS_Store
+.vscode/
