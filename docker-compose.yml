@@ -1,0 +1,12 @@
+services:
+  lineup:
+    build: .
+    container_name: football-lineup
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./.runtime:/app/.runtime
+    # Optical-flow tracking is CPU hungry; keep it away from the live TMS stack.
+    cpus: 2
+    mem_limit: 2g
