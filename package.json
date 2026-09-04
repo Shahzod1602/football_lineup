@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "start": ".venv/bin/uvicorn server:app --host 127.0.0.1 --port 5174"
+    "start": ".venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 5174",
+    "check": "node --check app.js && .venv/bin/python -m py_compile server.py"
   }
 }

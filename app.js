@@ -10,8 +10,11 @@ const formations = {
   '442': [[50,78],[84,64],[62,66],[38,66],[16,64],[77,48],[58,48],[42,48],[23,48],[65,27],[35,27]],
   '352': [[50,78],[74,64],[50,66],[26,64],[87,47],[67,48],[50,49],[33,48],[13,47],[64,27],[36,27]]
 };
-const clonePlayers = rows => rows.map(player => ({ ...player }));
 const makePlayers = () => defaults.map(([number,name,role,stat]) => ({number,name,role,stat,photo:''}));
+const clonePlayers = rows => {
+  const fallback = makePlayers();
+  return fallback.map((player, index) => ({ ...player, ...(rows?.[index] || {}) }));
+};
 const makeTeam = (club, teamColor, accentColor) => ({
   club, teamColor, accentColor, sponsor: 'OFFICIAL PARTNER', formation: '433', logoUrl: '', players: makePlayers(), positions: null,
 });
@@ -38,6 +41,10 @@ let uploadedVideoFile = null;
 let calibrationMode = false;
 let calibrationAnchors = [];
 let trackingReferencePositions = null;
+let layerPreferences = { stats: true, lines: true };
+try {
+  layerPreferences = { ...layerPreferences, ...JSON.parse(localStorage.getItem('lineup-ar-layers-v1') || '{}') };
+} catch (_) { localStorage.removeItem('lineup-ar-layers-v1'); }
 const storedPreset = localStorage.getItem('lineup-ar-fixed-camera-preset');
 if (storedPreset) {
   try {
@@ -72,6 +79,7 @@ function captureActiveTeam() {
 }
 function updateTeamTabs() {
   document.querySelectorAll('[data-team]').forEach(button => button.classList.toggle('active', button.dataset.team === activeTeam));
+  $('active-team-label').textContent = activeTeam.toUpperCase();
 }
 function loadTeam(teamName) {
   if (teamName === activeTeam) return;
@@ -88,12 +96,17 @@ function loadTeam(teamName) {
   $('formation').value = team.formation || '433';
   stopTracking();
   syncTheme(); renderRosterEditor(); renderCards(); updateTeamTabs();
-  $('tracking-status').className = 'tracking-status ready';
-  $('tracking-status').textContent = `${activeTeam.toUpperCase()} preset yuklandi`;
+  setTrackingStatus(`${activeTeam.toUpperCase()} preset yuklandi`, 'ready');
+  updateOperatorState();
 }
 
 function initials(name) { return name.split(/\s+/).map(s => s[0]).join('').slice(0,2) || 'FC'; }
 function esc(v) { return String(v).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function setTrackingStatus(message, state = '') {
+  const status = $('tracking-status');
+  status.className = `tracking-status${state ? ` ${state}` : ''}`;
+  status.innerHTML = `<i></i><span>${esc(message)}</span>`;
+}
 function syncTheme() {
   const team = $('team-color').value, accent = $('accent-color').value;
   document.documentElement.style.setProperty('--team', team);
@@ -101,6 +114,8 @@ function syncTheme() {
   const club = $('club-name').value.trim() || 'CLUB NAME';
   $('intro-club').textContent = club; $('top-club').textContent = club;
   $('intro-formation').textContent = $('formation').selectedOptions[0].text + ' FORMATION';
+  $('preview-club').textContent = club;
+  $('preview-formation').textContent = $('formation').selectedOptions[0].text;
   $('sponsor-strip').textContent = $('sponsor').value.trim() || 'OFFICIAL PARTNER';
   const logo = $('intro-logo');
   logo.textContent = initials(club);
@@ -108,16 +123,23 @@ function syncTheme() {
   if (logoUrl) logo.textContent = '';
 }
 function renderRosterEditor() {
-  $('roster-editor').innerHTML = players.map((p,i) => `<div class="player-row">
+  $('roster-editor').innerHTML = players.map((p,i) => `<article class="player-row">
     <input aria-label="${i+1}-o'yinchi raqami" class="editor-player-number" data-i="${i}" data-key="number" maxlength="2" value="${esc(p.number)}" />
-    <input aria-label="${i+1}-o'yinchi ismi" data-i="${i}" data-key="name" maxlength="20" value="${esc(p.name)}" />
-    <input aria-label="${i+1}-o'yinchi surati" class="photo-input" data-photo="${i}" type="file" accept="image/*" title="Surat yuklash" />
-  </div>`).join('');
+    <div class="player-fields">
+      <input aria-label="${i+1}-o'yinchi ismi" class="player-name-input" data-i="${i}" data-key="name" maxlength="20" value="${esc(p.name)}" />
+      <input aria-label="${i+1}-o'yinchi roli" class="player-role-input" data-i="${i}" data-key="role" maxlength="4" value="${esc(p.role)}" />
+      <input aria-label="${i+1}-o'yinchi statistikasi" class="player-stat-input" data-i="${i}" data-key="stat" maxlength="38" value="${esc(p.stat)}" />
+    </div>
+    <label class="photo-picker${p.photo ? ' has-photo' : ''}" title="${i+1}-o'yinchi suratini yuklash">
+      <input aria-label="${i+1}-o'yinchi surati" class="photo-input" data-photo="${i}" type="file" accept="image/*" />
+      <span class="photo-preview" style="${p.photo ? `background-image:url('${p.photo}')` : ''}"><span aria-hidden="true">＋</span></span>
+    </label>
+  </article>`).join('');
   document.querySelectorAll('[data-key]').forEach(input => input.addEventListener('input', e => {
-    players[e.target.dataset.i][e.target.dataset.key] = e.target.value.toUpperCase(); captureActiveTeam(); renderCards();
+    players[e.target.dataset.i][e.target.dataset.key] = e.target.value.toUpperCase(); captureActiveTeam(); renderCards(); updateOperatorState();
   }));
   document.querySelectorAll('[data-photo]').forEach(input => input.addEventListener('change', e => loadImage(e.target.files[0], url => {
-    players[e.target.dataset.photo].photo = url; captureActiveTeam(); renderCards();
+    players[e.target.dataset.photo].photo = url; captureActiveTeam(); renderRosterEditor(); renderCards();
   })));
 }
 function renderCards() {
@@ -139,6 +161,53 @@ function renderCards() {
   const links = [[0,1],[1,2],[2,3],[3,4],[2,6],[5,6],[6,7],[5,8],[6,9],[7,10]];
   $('tactic-lines').innerHTML = links.map(([a,b]) => `<line x1="${points[a][0]*10}" y1="${points[a][1]*5.6}" x2="${points[b][0]*10}" y2="${points[b][1]*5.6}" />`).join('');
   if (layoutMode) wireCardDragging();
+}
+function switchPanel(panelName) {
+  document.querySelectorAll('[data-panel]').forEach(button => button.classList.toggle('active', button.dataset.panel === panelName));
+  document.querySelectorAll('.panel-view').forEach(panel => panel.classList.toggle('active', panel.id === `panel-${panelName}`));
+  document.querySelector('.panel-scroll').scrollTop = 0;
+}
+function applyLayerPreferences() {
+  $('stats-toggle').checked = layerPreferences.stats;
+  $('lines-toggle').checked = layerPreferences.lines;
+  stage.classList.toggle('hide-stats', !layerPreferences.stats);
+  stage.classList.toggle('hide-lines', !layerPreferences.lines);
+  localStorage.setItem('lineup-ar-layers-v1', JSON.stringify(layerPreferences));
+}
+function updateOperatorState() {
+  const videoReady = Boolean(videoUrl);
+  const lineupReady = players.filter(player => String(player.name || '').trim() && String(player.number || '').trim()).length;
+  const anchorReady = trackingEnabled || Boolean(manualPositions) || !videoReady;
+  const onAir = stage.classList.contains('on-air');
+  const mode = calibrationMode ? 'CALIBRATING' : layoutMode ? 'LAYOUT MODE' : onAir ? 'ON AIR' : 'PREVIEW';
+
+  $('live-state-label').textContent = mode;
+  $('live-status').classList.toggle('is-live', onAir);
+  $('live-status').classList.toggle('is-tool', calibrationMode || layoutMode);
+  $('stage-mode-badge').querySelector('span').textContent = onAir ? 'PROGRAM LIVE' : calibrationMode ? 'CALIBRATING' : layoutMode ? 'POSITIONING' : 'REHEARSAL';
+  $('play-button').classList.toggle('is-live', onAir);
+  $('play-button').innerHTML = onAir ? '<span>↻</span> REPLAY GRAPHIC' : '<span>▶</span> TAKE ON AIR';
+
+  $('video-drop').classList.toggle('is-loaded', videoReady);
+  $('video-source-badge').classList.toggle('is-ready', videoReady);
+  $('video-source-badge').textContent = videoReady ? 'INPUT READY' : 'NO INPUT';
+  $('upload-title').textContent = videoReady ? uploadedVideoFile?.name || 'Video yuklandi' : 'Stadion videosini yuklang';
+  $('footer-source').textContent = videoReady ? 'VIDEO INPUT' : 'DEMO INPUT';
+
+  $('workflow-video').classList.toggle('is-ready', videoReady);
+  $('workflow-video-copy').textContent = videoReady ? 'Local video ready' : 'Demo pitch';
+  $('workflow-team').classList.toggle('is-ready', lineupReady === 11);
+  $('workflow-team-copy').textContent = `${activeTeam === 'home' ? 'Home' : 'Away'} · ${lineupReady} players`;
+  $('workflow-anchor').classList.toggle('is-ready', anchorReady);
+  $('workflow-anchor-copy').textContent = trackingEnabled ? 'Tracking locked' : manualPositions ? 'Custom fixed preset' : videoReady ? 'Position or calibrate' : 'Formation preset';
+
+  $('ready-video').classList.toggle('is-ready', videoReady);
+  $('ready-video').querySelector('b').textContent = videoReady ? 'READY' : 'DEMO';
+  $('ready-squad').classList.toggle('is-ready', lineupReady === 11);
+  $('ready-squad').querySelector('b').textContent = `${lineupReady} / 11`;
+  $('ready-anchor').classList.toggle('is-ready', anchorReady);
+  $('ready-anchor').querySelector('b').textContent = trackingEnabled ? 'TRACKED' : manualPositions ? 'FIXED' : videoReady ? 'OPTIONAL' : 'FORMATION';
+  $('readiness-score').textContent = `${Number(videoReady) + Number(lineupReady === 11) + Number(anchorReady)} / 3`;
 }
 function loadImage(file, onDone) { if (!file) return; const reader = new FileReader(); reader.onload = e => onDone(e.target.result); reader.readAsDataURL(file); }
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -195,8 +264,7 @@ function trackVideoFrame() {
   else requestAnimationFrame(trackVideoFrame);
 }
 async function analysePitch(file, anchors, startTime) {
-  const status = $('tracking-status');
-  status.className = 'tracking-status working'; status.textContent = 'Maydon harakati hisoblanmoqda…';
+  setTrackingStatus('Maydon harakati hisoblanmoqda…', 'working');
   trackingFrames = []; stage.classList.remove('tracked');
   const data = new FormData(); data.append('video', file); data.append('anchors', JSON.stringify(anchors)); data.append('start_time', String(startTime));
   try {
@@ -206,15 +274,14 @@ async function analysePitch(file, anchors, startTime) {
     trackingFrames = result.frames;
     trackingEnabled = true;
     stage.classList.add('tracked');
-    status.className = 'tracking-status ready';
-    status.textContent = `Maydonga biriktirildi: ${trackingFrames.length} kadr`;
+    setTrackingStatus(`Maydonga biriktirildi: ${trackingFrames.length} kadr`, 'ready');
     $('confidence-label').textContent = 'TRACK READY';
     if (!trackingLoopStarted) { trackingLoopStarted = true; trackVideoFrame(); }
   } catch (error) {
     trackingEnabled = false;
-    status.className = 'tracking-status';
-    status.textContent = `Tracking: ${error.message}`;
+    setTrackingStatus(`Tracking: ${error.message}`);
   }
+  updateOperatorState();
 }
 function renderCalibrationMarkers() {
   $('calibration-points').innerHTML = calibrationAnchors.map(([x, y], i) =>
@@ -232,8 +299,7 @@ function stopTracking() {
 }
 function toggleCalibrationMode() {
   if (!videoUrl || !uploadedVideoFile) {
-    $('tracking-status').className = 'tracking-status';
-    $('tracking-status').textContent = 'Avval stadion videosini yuklang';
+    setTrackingStatus('Avval stadion videosini yuklang');
     return;
   }
   calibrationMode = !calibrationMode;
@@ -245,24 +311,23 @@ function toggleCalibrationMode() {
     stage.classList.remove('on-air');
     stage.classList.add('calibration-mode');
     video.pause(); video.controls = true;
-    $('calibrate-button').textContent = '× BEKOR';
-    $('tracking-status').className = 'tracking-status working';
-    $('tracking-status').textContent = '4 ta oq chiziq kesishmasini bosing';
+    $('calibrate-button').innerHTML = '<span>×</span> BEKOR';
+    setTrackingStatus('4 ta oq chiziq kesishmasini bosing', 'working');
   } else {
     stage.classList.remove('calibration-mode', 'calibration-2', 'calibration-3', 'calibration-4');
     $('calibration-points').innerHTML = '';
     video.controls = false;
-    $('calibrate-button').textContent = '◇ 4 NUQTA';
-    $('tracking-status').className = 'tracking-status';
-    $('tracking-status').textContent = 'Kalibrovka bekor qilindi';
+    $('calibrate-button').innerHTML = '<span>◇</span> 4 NUQTA';
+    setTrackingStatus('Kalibrovka bekor qilindi');
   }
+  updateOperatorState();
 }
 async function completeCalibration() {
   calibrationMode = false;
   stage.classList.remove('calibration-2', 'calibration-3');
   stage.classList.add('calibration-mode', 'calibration-4');
   video.controls = false;
-  $('calibrate-button').textContent = '◇ 4 NUQTA';
+  $('calibrate-button').innerHTML = '<span>◇</span> 4 NUQTA';
   trackingReferencePositions = (manualPositions || formations[$('formation').value]).map(([x, y]) => [x, y]);
   await analysePitch(uploadedVideoFile, calibrationAnchors, video.currentTime);
   stage.classList.remove('calibration-mode', 'calibration-4');
@@ -276,21 +341,20 @@ function goOnAir() {
   stage.classList.add('on-air');
   previousCutFrame = null;
   if (videoUrl) video.play().catch(() => {});
-  $('play-button').innerHTML = '<span>●</span> ON AIR';
+  updateOperatorState();
 }
-function resetStage() { stage.classList.remove('on-air'); video.pause(); $('play-button').innerHTML = '<span>▶</span> ON AIR'; }
+function resetStage() { stage.classList.remove('on-air'); video.pause(); updateOperatorState(); }
 
 function downloadProject() {
   captureActiveTeam();
-  const project = { version: 1, exportedAt: new Date().toISOString(), activeTeam, teams };
+  const project = { version: 2, exportedAt: new Date().toISOString(), activeTeam, teams, layers: layerPreferences };
   const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `lineup-ar-${$('club-name').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'project'}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 500);
-  $('tracking-status').className = 'tracking-status ready';
-  $('tracking-status').textContent = 'Project JSON saqlandi';
+  setTrackingStatus('Project JSON saqlandi', 'ready');
 }
 
 function importProject(file) {
@@ -306,17 +370,16 @@ function importProject(file) {
       players = clonePlayers(team.players || makePlayers());
       logoUrl = team.logoUrl || '';
       manualPositions = positionsCopy(team.positions);
+      layerPreferences = { ...layerPreferences, ...(data.layers || {}) };
       $('club-name').value = team.club || 'CLUB NAME';
       $('team-color').value = team.teamColor || '#00ad76';
       $('accent-color').value = team.accentColor || '#d8ff43';
       $('sponsor').value = team.sponsor || 'OFFICIAL PARTNER';
       $('formation').value = team.formation || '433';
-      saveTeams(); stopTracking(); syncTheme(); renderRosterEditor(); renderCards(); updateTeamTabs();
-      $('tracking-status').className = 'tracking-status ready';
-      $('tracking-status').textContent = 'Project yuklandi';
+      saveTeams(); stopTracking(); syncTheme(); renderRosterEditor(); renderCards(); updateTeamTabs(); applyLayerPreferences(); updateOperatorState();
+      setTrackingStatus('Project yuklandi', 'ready');
     } catch (error) {
-      $('tracking-status').className = 'tracking-status';
-      $('tracking-status').textContent = `Project yuklanmadi: ${error.message}`;
+      setTrackingStatus(`Project yuklanmadi: ${error.message}`);
     }
   };
   reader.readAsText(file);
@@ -325,8 +388,7 @@ function importProject(file) {
 function openProgramOutput() {
   if (!stage.classList.contains('on-air')) goOnAir();
   stage.requestFullscreen?.().catch(() => {});
-  $('tracking-status').className = 'tracking-status ready';
-  $('tracking-status').textContent = 'PROGRAM: OBS Window Capture orqali oling';
+  setTrackingStatus('PROGRAM: OBS Window Capture orqali oling', 'ready');
 }
 
 function savePreset() {
@@ -351,16 +413,15 @@ function togglePlacementMode() {
     manualPositions = (manualPositions || formations[$('formation').value]).map(([x, y]) => [x, y]);
     stage.classList.remove('on-air'); stage.classList.add('layout-mode');
     video.pause(); video.controls = Boolean(videoUrl);
-    $('position-button').textContent = '✓ SAQLASH';
-    $('tracking-status').className = 'tracking-status ready';
-    $('tracking-status').textContent = 'JOYLA: kartani bosib, maydondagi o‘rniga torting';
+    $('position-button').innerHTML = '<span>✓</span> SAQLASH';
+    setTrackingStatus('JOYLA: kartani bosib, maydondagi o‘rniga torting', 'ready');
   } else {
     stage.classList.remove('layout-mode'); video.controls = false; savePreset();
-    $('position-button').textContent = '⌖ JOYLASH';
-    $('tracking-status').className = 'tracking-status ready';
-    $('tracking-status').textContent = 'Fixed-camera preset saqlandi';
+    $('position-button').innerHTML = '<span>⌖</span> JOYLASH';
+    setTrackingStatus('Fixed-camera preset saqlandi', 'ready');
   }
   renderCards();
+  updateOperatorState();
 }
 function wireCardDragging() {
   document.querySelectorAll('.player-card').forEach((card, index) => {
@@ -406,15 +467,15 @@ function monitorCameraCut() {
     if (score > 34) {
       stage.classList.remove('on-air');
       $('confidence-label').textContent = 'CAMERA CUT';
-      $('tracking-status').className = 'tracking-status working';
-      $('tracking-status').textContent = 'Camera cut: grafik yashirildi';
+      setTrackingStatus('Camera cut: grafik yashirildi', 'working');
+      updateOperatorState();
     }
   }
   previousCutFrame = new Uint8ClampedArray(pixels);
 }
 
-$('formation').addEventListener('input', () => { stopTracking(); manualPositions = null; localStorage.removeItem('lineup-ar-fixed-camera-preset'); captureActiveTeam(); syncTheme(); renderCards(); });
-['club-name','team-color','accent-color','sponsor'].forEach(id => $(id).addEventListener('input', () => { captureActiveTeam(); syncTheme(); renderCards(); }));
+$('formation').addEventListener('input', () => { stopTracking(); manualPositions = null; localStorage.removeItem('lineup-ar-fixed-camera-preset'); captureActiveTeam(); syncTheme(); renderCards(); updateOperatorState(); });
+['club-name','team-color','accent-color','sponsor'].forEach(id => $(id).addEventListener('input', () => { captureActiveTeam(); syncTheme(); renderCards(); updateOperatorState(); }));
 $('video-upload').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
   stopTracking();
@@ -422,8 +483,8 @@ $('video-upload').addEventListener('change', e => {
   uploadedVideoFile = file;
   videoUrl = URL.createObjectURL(file); video.src = videoUrl; video.loop = false; stage.classList.add('has-video');
   $('video-name').textContent = file.name; video.play().catch(() => {});
-  $('tracking-status').className = 'tracking-status ready';
-  $('tracking-status').textContent = 'Fixed camera: JOYLASH tugmasi bilan preset tuzing';
+  setTrackingStatus('Fixed camera: JOYLASH tugmasi bilan preset tuzing', 'ready');
+  updateOperatorState();
 });
 $('logo-upload').addEventListener('change', e => loadImage(e.target.files[0], url => { logoUrl = url; captureActiveTeam(); syncTheme(); }));
 $('play-button').addEventListener('click', goOnAir);
@@ -434,6 +495,9 @@ $('program-button').addEventListener('click', openProgramOutput);
 $('export-button').addEventListener('click', downloadProject);
 $('import-button').addEventListener('change', e => importProject(e.target.files[0]));
 document.querySelectorAll('[data-team]').forEach(button => button.addEventListener('click', () => loadTeam(button.dataset.team)));
+document.querySelectorAll('[data-panel]').forEach(button => button.addEventListener('click', () => switchPanel(button.dataset.panel)));
+$('stats-toggle').addEventListener('change', event => { layerPreferences.stats = event.target.checked; applyLayerPreferences(); });
+$('lines-toggle').addEventListener('change', event => { layerPreferences.lines = event.target.checked; applyLayerPreferences(); });
 $('broadcast-stage').addEventListener('pointerdown', event => {
   if (!calibrationMode || calibrationAnchors.length >= 4) return;
   event.preventDefault();
@@ -444,13 +508,20 @@ $('broadcast-stage').addEventListener('pointerdown', event => {
   renderCalibrationMarkers();
   if (calibrationAnchors.length === 4) completeCalibration();
 });
-$('restore-roster').addEventListener('click', () => { players = makePlayers(); captureActiveTeam(); renderRosterEditor(); renderCards(); });
-document.addEventListener('keydown', e => { if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); goOnAir(); } if (e.key === 'Escape') resetStage(); });
+$('restore-roster').addEventListener('click', () => { players = makePlayers(); captureActiveTeam(); renderRosterEditor(); renderCards(); updateOperatorState(); });
+document.addEventListener('keydown', event => {
+  const isEditing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  if (isEditing) return;
+  if (event.code === 'Space') { event.preventDefault(); goOnAir(); }
+  if (event.key === 'Escape') resetStage();
+  if (event.key.toLowerCase() === 'j') togglePlacementMode();
+  if (['1', '2', '3'].includes(event.key)) switchPanel(['setup', 'squad', 'output'][Number(event.key) - 1]);
+});
 const initialTeam = teams[activeTeam];
 $('club-name').value = initialTeam.club || 'TOSHKENT FC';
 $('team-color').value = initialTeam.teamColor || '#00ad76';
 $('accent-color').value = initialTeam.accentColor || '#d8ff43';
 $('sponsor').value = initialTeam.sponsor || 'OFFICIAL PARTNER';
 $('formation').value = initialTeam.formation || '433';
-syncTheme(); renderRosterEditor(); renderCards(); updateTeamTabs();
+syncTheme(); renderRosterEditor(); renderCards(); updateTeamTabs(); applyLayerPreferences(); updateOperatorState();
 setInterval(monitorCameraCut, 350);

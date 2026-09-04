@@ -3,107 +3,191 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080c16" />
     <title>LineUp AR — Live Football Graphics</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./tracking.css" />
+    <link rel="stylesheet" href="./operator.css" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="control-panel">
-        <div class="brand"><span class="brand-mark">L</span><span>LINEUP <b>AR</b></span></div>
-        <p class="eyebrow">LIVE BROADCAST CONTROLLER</p>
+        <header class="panel-header">
+          <div class="brand"><span class="brand-mark">L</span><span>LINEUP <b>AR</b></span></div>
+          <span class="system-badge"><i></i> LOCAL ENGINE</span>
+          <p class="panel-kicker">Broadcast graphics console</p>
+        </header>
 
-        <section class="settings-block">
-          <label class="upload-drop" for="video-upload">
-            <input id="video-upload" type="file" accept="video/*" />
-            <span class="upload-icon">↥</span>
-            <strong>Stadion videosini yuklang</strong>
-            <small>MP4, MOV yoki WebM</small>
-          </label>
-          <p id="video-name" class="file-name">Demo fon ishlatilmoqda</p>
-          <p id="tracking-status" class="tracking-status">Pitch tracking: video yuklang</p>
-        </section>
+        <nav class="panel-tabs" aria-label="Boshqaruv bo‘limlari">
+          <button class="panel-tab active" data-panel="setup" type="button"><span>01</span> SETUP</button>
+          <button class="panel-tab" data-panel="squad" type="button"><span>02</span> SQUAD <b>11</b></button>
+          <button class="panel-tab" data-panel="output" type="button"><span>03</span> OUTPUT</button>
+        </nav>
 
-        <section class="settings-block two-col">
-          <label>Klub nomi<input id="club-name" value="TOSHKENT FC" maxlength="28" /></label>
-          <label>Formation
-            <select id="formation">
-              <option value="433">4–3–3</option>
-              <option value="4231">4–2–3–1</option>
-              <option value="442">4–4–2</option>
-              <option value="352">3–5–2</option>
-            </select>
-          </label>
-          <label>Asosiy rang<input id="team-color" type="color" value="#00ad76" /></label>
-          <label>Accent<input id="accent-color" type="color" value="#d8ff43" /></label>
-          <label class="wide">Sponsor<input id="sponsor" value="OFFICIAL PARTNER" maxlength="32" /></label>
-          <label class="wide logo-upload">Klub logosi <input id="logo-upload" type="file" accept="image/*" /></label>
-        </section>
+        <div class="panel-scroll">
+          <section id="panel-setup" class="panel-view active" aria-label="Setup">
+            <div class="section-heading">
+              <div><p class="section-kicker">VIDEO SOURCE</p><h2>Match footage</h2></div>
+              <span id="video-source-badge" class="mini-badge">NO INPUT</span>
+            </div>
 
-        <section class="settings-block team-presets">
-          <div><p class="section-title">TEAM PRESETS</p><small>Har jamoa uchun alohida tarkib va joylashuv</small></div>
-          <div class="team-tabs" role="group" aria-label="Jamoani tanlash">
-            <button class="team-tab active" data-team="home" type="button">HOME</button>
-            <button class="team-tab" data-team="away" type="button">AWAY</button>
-          </div>
-        </section>
+            <label class="upload-drop" id="video-drop" for="video-upload">
+              <input id="video-upload" type="file" accept="video/*" />
+              <span class="upload-icon">↥</span>
+              <span class="upload-copy"><strong id="upload-title">Stadion videosini yuklang</strong><small>MP4, MOV yoki WebM · local processing</small></span>
+              <span class="upload-action">BROWSE</span>
+            </label>
+            <p id="video-name" class="file-name">Demo pitch ishlatilmoqda</p>
+            <div id="tracking-status" class="tracking-status"><i></i><span>Pitch tracking: video yuklang</span></div>
 
-        <section class="settings-block roster-heading">
-          <div><p class="section-title">STARTING XI</p><small>Ism, raqam va suratni yangilang</small></div>
-          <button id="restore-roster" class="text-button" type="button">Tiklash</button>
-        </section>
-        <div id="roster-editor" class="roster-editor"></div>
+            <div class="section-divider"></div>
 
-        <div class="control-actions">
-          <button id="position-button" class="secondary-button" type="button">⌖ JOYLASH</button>
-          <button id="calibrate-button" class="secondary-button" type="button">◇ 4 NUQTA</button>
-          <button id="reset-button" class="secondary-button" type="button">↺ Qayta</button>
-          <button id="play-button" class="primary-button" type="button"><span>▶</span> ON AIR</button>
+            <div class="section-heading compact">
+              <div><p class="section-kicker">TEAM IDENTITY</p><h2>Club profile</h2></div>
+              <span id="active-team-label" class="mini-badge is-ready">HOME</span>
+            </div>
+
+            <section class="team-presets">
+              <div class="team-tabs" role="group" aria-label="Jamoani tanlash">
+                <button class="team-tab active" data-team="home" type="button"><span>HOME</span><small>Primary XI</small></button>
+                <button class="team-tab" data-team="away" type="button"><span>AWAY</span><small>Opponent XI</small></button>
+              </div>
+            </section>
+
+            <section class="team-form two-col">
+              <label class="wide">Klub nomi<input id="club-name" value="TOSHKENT FC" maxlength="28" /></label>
+              <label>Formation
+                <select id="formation">
+                  <option value="433">4–3–3</option>
+                  <option value="4231">4–2–3–1</option>
+                  <option value="442">4–4–2</option>
+                  <option value="352">3–5–2</option>
+                </select>
+              </label>
+              <label>Sponsor<input id="sponsor" value="OFFICIAL PARTNER" maxlength="32" /></label>
+              <label class="color-field">Asosiy rang<span class="color-control"><input id="team-color" type="color" value="#00ad76" /><b>TEAM</b></span></label>
+              <label class="color-field">Accent<span class="color-control"><input id="accent-color" type="color" value="#d8ff43" /><b>ACCENT</b></span></label>
+              <label class="wide logo-upload" for="logo-upload">
+                <span class="logo-upload-icon">◎</span>
+                <span><b>Klub logosi</b><small>PNG yoki SVG · 1:1 tavsiya etiladi</small></span>
+                <em>UPLOAD</em>
+                <input id="logo-upload" type="file" accept="image/*" />
+              </label>
+            </section>
+          </section>
+
+          <section id="panel-squad" class="panel-view" aria-label="Squad">
+            <div class="section-heading roster-heading">
+              <div><p class="section-kicker">STARTING XI</p><h2>Player cards</h2><small>Ism, raqam, rol va statistikani yangilang</small></div>
+              <button id="restore-roster" class="text-button" type="button">↺ Tiklash</button>
+            </div>
+            <div class="roster-legend"><span>#</span><span>PLAYER / ROLE / STAT</span><span>PHOTO</span></div>
+            <div id="roster-editor" class="roster-editor"></div>
+          </section>
+
+          <section id="panel-output" class="panel-view" aria-label="Output">
+            <div class="section-heading">
+              <div><p class="section-kicker">SHOW CONTROL</p><h2>Output & export</h2></div>
+              <span class="mini-badge is-ready">1080P</span>
+            </div>
+
+            <div class="readiness-card">
+              <div class="readiness-head"><span>ON-AIR READINESS</span><b id="readiness-score">2 / 3</b></div>
+              <div id="ready-video" class="readiness-row"><i></i><span>Video source</span><b>WAITING</b></div>
+              <div id="ready-squad" class="readiness-row is-ready"><i></i><span>Starting XI</span><b>11 / 11</b></div>
+              <div id="ready-anchor" class="readiness-row"><i></i><span>Pitch anchor</span><b>OPTIONAL</b></div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="display-options">
+              <p class="section-kicker">OVERLAY LAYERS</p>
+              <label><span><b>Player stats</b><small>Karta ostidagi performance line</small></span><input id="stats-toggle" type="checkbox" checked /><i></i></label>
+              <label><span><b>Tactical links</b><small>Formation chiziqlari</small></span><input id="lines-toggle" type="checkbox" checked /><i></i></label>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="output-actions">
+              <button id="program-button" class="output-button primary-output" type="button"><span>↗</span><b>PROGRAM</b><small>Fullscreen output</small></button>
+              <button id="export-button" class="output-button" type="button"><span>↓</span><b>EXPORT</b><small>Save project JSON</small></button>
+              <label class="output-button import-button" for="import-button"><span>↑</span><b>LOAD</b><small>Open project JSON</small><input id="import-button" type="file" accept="application/json" /></label>
+            </div>
+
+            <div class="shortcut-card">
+              <span>KEYBOARD</span>
+              <div><kbd>SPACE</kbd><small>Take / replay</small><kbd>ESC</kbd><small>Clear</small></div>
+              <div><kbd>J</kbd><small>Joylash mode</small><kbd>1–3</kbd><small>Panel</small></div>
+            </div>
+          </section>
         </div>
 
-        <section class="settings-block output-tools">
-          <p class="section-title">OUTPUT / EXPORT</p>
-          <div class="output-actions">
-            <button id="program-button" class="secondary-button" type="button">↗ PROGRAM</button>
-            <button id="export-button" class="secondary-button" type="button">↓ PROJECT</button>
-            <label class="import-button" for="import-button">↑ LOAD<input id="import-button" type="file" accept="application/json" /></label>
+        <footer class="control-dock">
+          <div class="tool-row">
+            <button id="position-button" class="secondary-button" type="button"><span>⌖</span> JOYLASH</button>
+            <button id="calibrate-button" class="secondary-button" type="button"><span>◇</span> 4 NUQTA</button>
           </div>
-          <small>PROGRAM — OBS Window Capture uchun toza full-screen chiqish.</small>
-        </section>
+          <div class="take-row">
+            <button id="reset-button" class="clear-button" type="button"><span>×</span> CLEAR</button>
+            <button id="play-button" class="primary-button" type="button"><span>▶</span> TAKE ON AIR</button>
+          </div>
+        </footer>
       </aside>
 
       <section class="preview-area">
         <header class="preview-header">
-          <div><p class="eyebrow">PROGRAM PREVIEW</p><h1>Starting XI</h1></div>
-          <div class="live-status"><i></i> LIVE PREVIEW</div>
+          <div class="preview-title">
+            <p class="section-kicker">PROGRAM PREVIEW</p>
+            <div><h1 id="preview-club">TOSHKENT FC</h1><span id="preview-formation">4–3–3</span></div>
+          </div>
+          <div id="live-status" class="live-status"><i></i><span id="live-state-label">PREVIEW</span></div>
         </header>
 
-        <div id="broadcast-stage" class="broadcast-stage">
-          <video id="stadium-video" muted loop playsinline></video>
-          <div class="video-fallback"><span>VIDEO</span><p>Stadion videosini yuklang</p></div>
-          <div class="scene-vignette"></div>
-
-          <div id="intro" class="intro-card">
-            <div id="intro-logo" class="intro-logo">TF</div>
-            <div><p>STARTING XI</p><h2 id="intro-club">TOSHKENT FC</h2><span id="intro-formation">4–3–3 FORMATION</span></div>
-          </div>
-
-          <svg class="tactic-lines" id="tactic-lines" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true"></svg>
-          <svg id="safe-zone" class="safe-zone" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true">
-            <polygon points="145,138 855,138 982,520 18,520"></polygon>
-            <text x="500" y="300">SAFE FIELD ZONE</text>
-          </svg>
-          <div id="lineup-cards" class="lineup-cards"></div>
-          <div id="calibration-points" class="calibration-points" aria-hidden="true"></div>
-
-          <div class="broadcast-top"><span id="top-club">TOSHKENT FC</span><span class="dot"></span><span>LINEUP</span><small id="confidence-label"></small></div>
-          <div id="sponsor-strip" class="sponsor-strip">OFFICIAL PARTNER</div>
+        <div class="workflow-strip" aria-label="Ish jarayoni holati">
+          <div id="workflow-video"><span>01</span><p><b>VIDEO INPUT</b><small id="workflow-video-copy">Demo pitch</small></p></div>
+          <i></i>
+          <div id="workflow-team" class="is-ready"><span>02</span><p><b>LINEUP READY</b><small id="workflow-team-copy">Home · 11 players</small></p></div>
+          <i></i>
+          <div id="workflow-anchor"><span>03</span><p><b>PITCH ANCHOR</b><small id="workflow-anchor-copy">Fixed position</small></p></div>
         </div>
 
-        <footer class="preview-footer"><span>VIDEO INPUT</span><span>1920 × 1080</span><span>REAL-TIME OVERLAY</span></footer>
+        <div class="stage-viewport">
+          <div id="broadcast-stage" class="broadcast-stage">
+            <video id="stadium-video" muted loop playsinline></video>
+            <div class="video-fallback">
+              <div class="stadium-lights"></div>
+              <div class="fallback-field"><span class="halfway-line"></span><span class="center-circle"></span><span class="penalty-box left"></span><span class="penalty-box right"></span></div>
+              <div class="fallback-copy"><span>NO VIDEO INPUT</span><strong>DEMO PITCH</strong><small>Match footage yuklang yoki lineup’ni rehearsal qiling</small></div>
+            </div>
+            <div class="scene-vignette"></div>
+
+            <div id="stage-mode-badge" class="stage-mode-badge"><i></i><span>REHEARSAL</span></div>
+            <div id="intro" class="intro-card">
+              <div id="intro-logo" class="intro-logo">TF</div>
+              <div><p>STARTING XI</p><h2 id="intro-club">TOSHKENT FC</h2><span id="intro-formation">4–3–3 FORMATION</span></div>
+            </div>
+
+            <svg class="tactic-lines" id="tactic-lines" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <svg id="safe-zone" class="safe-zone" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points="145,138 855,138 982,520 18,520"></polygon>
+              <text x="500" y="300">SAFE FIELD ZONE</text>
+            </svg>
+            <div id="lineup-cards" class="lineup-cards"></div>
+            <div id="calibration-points" class="calibration-points" aria-hidden="true"></div>
+
+            <div class="broadcast-top"><span id="top-club">TOSHKENT FC</span><span class="dot"></span><span>STARTING XI</span><small id="confidence-label"></small></div>
+            <div id="sponsor-strip" class="sponsor-strip">OFFICIAL PARTNER</div>
+          </div>
+        </div>
+
+        <footer class="preview-footer">
+          <div><span class="footer-dot"></span><span id="footer-source">DEMO INPUT</span></div>
+          <div><span>1920 × 1080</span><span>16:9 PROGRAM</span><span>REAL-TIME OVERLAY</span></div>
+          <div><kbd>SPACE</kbd><span>TAKE</span></div>
+        </footer>
       </section>
     </main>
     <script src="./app.js"></script>
