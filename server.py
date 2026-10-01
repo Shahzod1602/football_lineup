@@ -6,21 +6,90 @@ graphic after a bad camera cut than to let it float across the picture.
 
 from __future__ import annotations
 
-import shutil
+import math
+import threading
 import uuid
 import json
+import asyncio
+import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
+from live_tracking import LiveTracker, validate_anchors
+
+cv2.setNumThreads(1)  # Bound CPU usage across concurrent live sessions.
 
 BASE_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = BASE_DIR / ".runtime" / "uploads"
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="LineUp AR Tracker")
+live_connections = 0
+file_jobs = threading.BoundedSemaphore(1)
+MAX_UPLOAD_BYTES = 256 * 1024 * 1024
+MAX_VIDEO_SECONDS = 600
+MAX_VIDEO_PIXELS = 3840 * 2160
+
+
+@app.middleware("http")
+async def upload_size_limit(request, call_next):
+    if request.url.path in ("/api/track", "/api/analyze"):
+        try:
+            size = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            return JSONResponse({"detail": "So‘rov hajmi noto‘g‘ri."}, status_code=400)
+        if size > MAX_UPLOAD_BYTES + 1024 * 1024:
+            return JSONResponse({"detail": "Video 256 MB dan oshmasin."}, status_code=413)
+    return await call_next(request)
+
+
+@app.websocket("/api/live-track")
+async def live_track(socket: WebSocket):
+    global live_connections
+    origin = socket.headers.get("origin")
+    if origin and urlsplit(origin).netloc != socket.headers.get("host"):
+        await socket.close(code=1008)
+        return
+    await socket.accept()
+    if live_connections >= 4:
+        await socket.send_json({"type": "error", "message": "Tracking serveri band. Birozdan keyin qayta ulang."})
+        await socket.close(code=1013)
+        return
+    live_connections += 1
+    try:
+        setup = await asyncio.wait_for(socket.receive_json(), timeout=10)
+        if not isinstance(setup, dict) or setup.get("type") != "calibrate":
+            raise ValueError("Kalibrovka ma’lumotlari kerak.")
+        reference = await asyncio.wait_for(socket.receive_bytes(), timeout=10)
+        tracker = await run_in_threadpool(LiveTracker, reference, setup.get("anchors"))
+        await socket.send_json({"type": "ready"})
+        sequence = 0
+        while True:
+            frame = await asyncio.wait_for(socket.receive_bytes(), timeout=10)
+            started = time.monotonic()
+            result = await run_in_threadpool(tracker.update, frame)
+            sequence += 1
+            await socket.send_json({**result, "seq": sequence, "processing_ms": round((time.monotonic() - started) * 1000)})
+            if result.get("lost"):
+                await socket.close(code=1000)
+                break
+            await asyncio.sleep(max(0, 1 / 15 - (time.monotonic() - started)))
+    except WebSocketDisconnect:
+        pass
+    except (ValueError, TypeError, KeyError, cv2.error, asyncio.TimeoutError) as error:
+        message = str(error) if isinstance(error, ValueError) else "Tracking uzildi. 4 NUQTA bilan qayta ulang."
+        try:
+            await socket.send_json({"type": "error", "message": message})
+            await socket.close(code=1008)
+        except (RuntimeError, WebSocketDisconnect):
+            pass
+    finally:
+        live_connections -= 1
 
 
 def _field_mask(frame: np.ndarray) -> np.ndarray:
@@ -97,10 +166,11 @@ def analyse(path: Path) -> dict:
     if not cap.isOpened():
         raise ValueError("Video ochilmadi. MP4/H.264 formatidan foydalaning.")
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    try:
+        fps, total, width, height = video_metadata(cap)
+    except ValueError:
+        cap.release()
+        raise
     duration = total / fps if total else 0
     stride = max(1, round(fps / 12))  # 12 pose updates/sec is smooth enough for an overlay.
 
@@ -160,127 +230,92 @@ def analyse(path: Path) -> dict:
     return {"fps": round(float(fps), 3), "duration": round(float(duration), 3), "frames": frames}
 
 
+def video_metadata(cap):
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    if not all(math.isfinite(v) and v > 0 for v in (fps, total, width, height)):
+        raise ValueError("Video o‘lchami yoki davomiyligi o‘qilmadi.")
+    if fps > 120 or total / fps > MAX_VIDEO_SECONDS or width * height > MAX_VIDEO_PIXELS:
+        raise ValueError("Video 10 daqiqa, 4K va 120 FPS chegarasidan oshmasin.")
+    return fps, int(total), int(width), int(height)
+
+
 def track_from_anchors(path: Path, anchors: list[list[float]], start_time: float) -> dict:
-    """Track a manually calibrated pitch plane through a prerecorded clip.
-
-    The operator selects four durable white-line intersections.  We seed feature
-    points around them, estimate a RANSAC homography every frame and compose it
-    from the calibration frame.  A weak homography is sent with low confidence;
-    the browser then hides the overlay rather than letting it drift.
-    """
+    """Register each frame to the calibration image; never reacquire after loss."""
+    validate_anchors(anchors)
+    if not math.isfinite(start_time) or start_time < 0:
+        raise ValueError("Kalibrovka vaqti noto‘g‘ri.")
     cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise ValueError("Video ochilmadi. MP4/H.264 formatidan foydalaning.")
-
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    start_frame = max(0, min(max(0, total - 1), int(round(start_time * fps))))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-    ok, first = cap.read()
-    if not ok or not width or not height:
-        raise ValueError("Kalibrovka kadri o‘qilmadi.")
-
-    base_anchors = np.asarray([[x * width, y * height] for x, y in anchors], dtype=np.float32)
-    radius = max(22, int(min(width, height) * 0.075))
-
-    def feature_mask(current_anchors: np.ndarray) -> np.ndarray:
-        mask = np.zeros((height, width), dtype=np.uint8)
-        for x, y in current_anchors:
-            cv2.circle(mask, (int(x), int(y)), radius, 255, -1)
-        return mask
-
-    def seed_features(gray: np.ndarray, current_anchors: np.ndarray) -> np.ndarray:
-        found = cv2.goodFeaturesToTrack(
-            gray, maxCorners=160, qualityLevel=0.003, minDistance=4,
-            mask=feature_mask(current_anchors), blockSize=5,
-        )
-        # Include exact clicks as a fallback; the nearby corner features usually
-        # carry the homography, while these help at high-contrast line joints.
-        anchor_points = current_anchors.reshape(-1, 1, 2).astype(np.float32)
-        return anchor_points if found is None else np.vstack((found, anchor_points))
-
-    prev_gray = cv2.cvtColor(first, cv2.COLOR_BGR2GRAY)
-    points = seed_features(prev_gray, base_anchors)
-    homography = np.eye(3, dtype=np.float64)
-    # OpenCV estimates in video pixels, while the browser stores cards as 0..1
-    # stage coordinates.  Convert H with S⁻¹HS before serialising it.
-    pixel_scale = np.array([[width, 0.0, 0.0], [0.0, height, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
-    inverse_pixel_scale = np.linalg.inv(pixel_scale)
-
-    def normalized_h(matrix: np.ndarray) -> list[float]:
-        converted = inverse_pixel_scale @ matrix @ pixel_scale
-        if abs(converted[2, 2]) > 1e-7:
-            converted /= converted[2, 2]
-        return [round(float(value), 8) for value in converted.reshape(-1)]
-
-    frames: list[dict] = [{
-        "t": round(start_frame / fps, 3),
-        "h": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-        "confidence": 1.0,
-    }]
-    frame_index = start_frame + 1
-
-    while True:
-        ok, frame = cap.read()
+    try:
+        if not cap.isOpened():
+            raise ValueError("Video ochilmadi. MP4/H.264 formatidan foydalaning.")
+        fps, total, width, height = video_metadata(cap)
+        start_frame = min(total - 1, int(round(start_time * fps)))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        ok, first = cap.read()
         if not ok:
-            break
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        next_points, status, _ = cv2.calcOpticalFlowPyrLK(
-            prev_gray, gray, points, None, winSize=(31, 31), maxLevel=3,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03),
-        )
-        good_old = points[status.ravel() == 1] if status is not None and next_points is not None else np.empty((0, 2))
-        good_new = next_points[status.ravel() == 1] if status is not None and next_points is not None else np.empty((0, 2))
-        confidence = 0.0
+            raise ValueError("Kalibrovka kadri o‘qilmadi.")
+        scale = min(800 / width, 800 / height, math.sqrt(590000 / (width * height)))
+        size = (max(1, round(width * scale)), max(1, round(height * scale)))
+        def encode(frame):
+            resized = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
+            return cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 82])[1].tobytes()
+        tracker = LiveTracker(encode(first), anchors)
+        identity = [1., 0., 0., 0., 1., 0., 0., 0., 1.]
+        frames = [{"t": round(start_frame / fps, 6), "h": identity, "confidence": 1.0}]
+        for index in range(start_frame + 1, total):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            result = tracker.update(encode(frame))
+            frames.append({"t": round(index / fps, 6), "h": result.get("h", identity),
+                           "confidence": result["confidence"], "lost": result["lost"]})
+            if result["lost"]:
+                # A terminal lost sample covers the rest of the clip without
+                # matching unrelated frames or spending CPU after a camera cut.
+                if index < total - 1:
+                    frames.append({**frames[-1], "t": round((total - 1) / fps, 6)})
+                break
+        return {"fps": round(fps, 3), "frames": frames}
+    finally:
+        cap.release()
 
-        if len(good_old) >= 8:
-            step, inliers = cv2.findHomography(good_old, good_new, cv2.RANSAC, 2.8)
-            inlier_count = int(inliers.sum()) if inliers is not None else 0
-            if step is not None and inlier_count >= 7:
-                homography = step @ homography
-                if abs(homography[2, 2]) > 1e-7:
-                    homography /= homography[2, 2]
-                confidence = min(1.0, inlier_count / max(12, len(good_old) * 0.58))
 
-        if confidence < 0.28:
-            # Do not relock to a close-up/cut: that would move cards to a wrong
-            # place. Keeping low confidence lets the frontend hide them safely.
-            points = seed_features(gray, cv2.perspectiveTransform(base_anchors.reshape(1, -1, 2), homography).reshape(-1, 2))
-        elif len(good_new) < 24 or frame_index % int(max(fps * 2, 1)) == 0:
-            current_anchors = cv2.perspectiveTransform(base_anchors.reshape(1, -1, 2), homography).reshape(-1, 2)
-            points = seed_features(gray, current_anchors)
-        else:
-            points = good_new.reshape(-1, 1, 2)
+def process_upload(video, operation, *args):
+    target = RUNTIME_DIR / f"{uuid.uuid4().hex}.video"
+    try:
+        size = 0
+        with target.open("wb") as output:
+            while chunk := video.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Video 256 MB dan oshmasin.")
+                output.write(chunk)
+        return operation(target, *args)
+    finally:
+        target.unlink(missing_ok=True)
 
-        frames.append({
-            "t": round(frame_index / fps, 3),
-            "h": normalized_h(homography),
-            "confidence": round(float(confidence), 3),
-        })
-        prev_gray = gray
-        frame_index += 1
 
-    cap.release()
-    return {"fps": round(float(fps), 3), "frames": frames}
+async def run_file_job(video, operation, *args):
+    if not file_jobs.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Video hisoblanmoqda. Birozdan keyin qayta urinib ko‘ring.")
+    try:
+        result = await run_in_threadpool(process_upload, video, operation, *args)
+        return {"ok": True, **result}
+    except (ValueError, cv2.error) as error:
+        raise HTTPException(status_code=422, detail=str(error) if isinstance(error, ValueError) else "Video kadri o‘qilmadi.") from error
+    finally:
+        file_jobs.release()
+        await video.close()
 
 
 @app.post("/api/analyze")
 async def analyze_video(video: UploadFile = File(...)) -> dict:
     if not (video.content_type or "").startswith("video/"):
         raise HTTPException(status_code=415, detail="Video fayl yuboring.")
-    suffix = Path(video.filename or "upload.mp4").suffix or ".mp4"
-    target = RUNTIME_DIR / f"{uuid.uuid4().hex}{suffix}"
-    try:
-        with target.open("wb") as output:
-            shutil.copyfileobj(video.file, output)
-        result = analyse(target)
-        return {"ok": True, **result}
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    finally:
-        target.unlink(missing_ok=True)
+    return await run_file_job(video, analyse)
 
 
 @app.post("/api/track")
@@ -292,27 +327,25 @@ async def track_video(
     if not (video.content_type or "").startswith("video/"):
         raise HTTPException(status_code=415, detail="Video fayl yuboring.")
     try:
-        selected = json.loads(anchors)
-        if not isinstance(selected, list) or len(selected) != 4:
-            raise ValueError
-        selected = [[float(point[0]), float(point[1])] for point in selected]
-        if any(not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0) for x, y in selected):
-            raise ValueError
-    except (ValueError, TypeError, IndexError, json.JSONDecodeError) as error:
-        raise HTTPException(status_code=422, detail="4 ta maydon nuqtasi kerak.") from error
-
-    suffix = Path(video.filename or "upload.mp4").suffix or ".mp4"
-    target = RUNTIME_DIR / f"{uuid.uuid4().hex}{suffix}"
-    try:
-        with target.open("wb") as output:
-            shutil.copyfileobj(video.file, output)
-        result = track_from_anchors(target, selected, max(0.0, start_time))
-        return {"ok": True, **result}
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    finally:
-        target.unlink(missing_ok=True)
+        selected = validate_anchors(json.loads(anchors)).tolist()
+        if not math.isfinite(start_time) or start_time < 0:
+            raise ValueError("Kalibrovka vaqti noto‘g‘ri.")
+    except (ValueError, TypeError) as error:
+        raise HTTPException(status_code=422, detail="4 ta yoyilgan maydon nuqtasi va to‘g‘ri vaqt kerak.") from error
+    return await run_file_job(video, track_from_anchors, selected, start_time)
 
 
-# API routes are registered before this catch-all static frontend route.
-app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="frontend")
+# Explicit public files: source, configuration and uploads never enter this map.
+PUBLIC_FILES = {name: BASE_DIR / name for name in (
+    "index.html", "styles.css", "tracking.css", "operator.css", "app.js",
+    "smart-layout.js", "live-tracking.js", "project-data.js", "video-geometry.js",
+    "assets/demo-player-portraits-v1.png",
+)}
+
+
+@app.api_route("/{path:path}", methods=["GET", "HEAD"])
+async def frontend(path: str):
+    target = PUBLIC_FILES.get(path or "index.html")
+    if target is None:
+        raise HTTPException(status_code=404)
+    return FileResponse(target)

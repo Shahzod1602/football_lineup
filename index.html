@@ -34,15 +34,47 @@
               <span id="video-source-badge" class="mini-badge">NO INPUT</span>
             </div>
 
+            <div class="live-input">
+              <label for="camera-select">Jonli kamera / OBS Virtual Camera</label>
+              <select id="camera-select"><option value="">Standart kamera</option></select>
+              <div class="live-input-actions">
+                <button id="camera-start" class="secondary-button" type="button">◉ KAMERA</button>
+                <button id="screen-start" class="secondary-button" type="button">▣ EFIR OYNASI</button>
+                <button id="source-stop" class="secondary-button" type="button" disabled>UZISH</button>
+              </div>
+              <p id="source-status" role="status" aria-live="polite">Kamerani yoki jonli efir oynasini ulang.</p>
+              <small>JOYLASH → 4 NUQTA → TAKE ON AIR. OBS uchun Virtual Camera’ni yoqing.</small>
+            </div>
             <label class="upload-drop" id="video-drop" for="video-upload">
               <input id="video-upload" type="file" accept="video/*" />
               <span class="upload-icon">↥</span>
-              <span class="upload-copy"><strong id="upload-title">Stadion videosini yuklang</strong><small>MP4, MOV yoki WebM · local processing</small></span>
+              <span class="upload-copy"><strong id="upload-title">Stadion videosini yuklang</strong><small>MP4, MOV yoki WebM · 256 MB / 10 daqiqa</small></span>
               <span class="upload-action">BROWSE</span>
             </label>
             <p id="video-name" class="file-name">Demo pitch ishlatilmoqda</p>
             <div id="tracking-status" class="tracking-status"><i></i><span>Pitch tracking: video yuklang</span></div>
 
+            <div class="section-divider"></div>
+
+            <section class="auto-placement" aria-label="Maydonga avtomatik joylash">
+              <div class="section-heading compact"><div><p class="section-kicker">AUTO JOYLASH</p><h2>Maydonga mos tarkib</h2></div></div>
+              <label for="pitch-region">Tarkib chiqariladigan hudud</label>
+              <select id="pitch-region"><option value="half">O‘z yarim maydoni</option><option value="full">Butun maydon</option></select>
+              <svg id="pitch-map" viewBox="0 0 300 180" role="img" aria-label="Maydon: 1 o‘z darvozasi chap qanot, 2 hujum tomoni chap qanot, 3 hujum tomoni o‘ng qanot, 4 o‘z darvozasi o‘ng qanot">
+                <rect x="30" y="25" width="240" height="130" rx="2" />
+                <path d="M30 60H65V120H30 M30 76H45V104H30 M270 25V155 M135 90H175 M167 85L175 90L167 95" />
+                <text x="150" y="13">CHAP QANOT</text><text x="150" y="177">O‘NG QANOT</text>
+                <text x="83" y="94">DARVOZA</text><text id="pitch-map-end" x="229" y="94">MARKAZ</text>
+                <g data-pitch-point="0"><circle cx="30" cy="25" r="11"/><text x="30" y="29">1</text></g>
+                <g data-pitch-point="1"><circle cx="270" cy="25" r="11"/><text x="270" y="29">2</text></g>
+                <g data-pitch-point="2"><circle cx="270" cy="155" r="11"/><text x="270" y="159">3</text></g>
+                <g data-pitch-point="3"><circle cx="30" cy="155" r="11"/><text x="30" y="159">4</text></g>
+              </svg>
+              <p id="pitch-point-hint">Chap/o‘ng — o‘z darvozangizdan hujum tomonga qaraganda. Videoda sxemadagi nuqtalarni belgilang.</p>
+              <div class="live-input-actions"><button id="auto-place-button" class="primary-button" type="button">✦ AUTO JOYLASH</button><button id="auto-preview-button" class="secondary-button" type="button" disabled>PREVIEW</button></div>
+              <p id="auto-layout-status" role="status" aria-live="polite">Formation tanlang, keyin AUTO JOYLASH ni bosing.</p>
+              <p id="auto-role-warning" role="status"></p>
+            </section>
             <div class="section-divider"></div>
 
             <div class="section-heading compact">
@@ -68,6 +100,15 @@
                 </select>
               </label>
               <label>Sponsor<input id="sponsor" value="OFFICIAL PARTNER" maxlength="32" /></label>
+              <label class="wide">Tarkib yo‘nalishi
+                <select id="layout-angle">
+                  <option value="90" selected>90° — darvozabon chapda</option>
+                  <option value="270">270° — darvozabon o‘ngda</option>
+                  <option value="0">0° — darvozabon pastda</option>
+                  <option value="180">180° — darvozabon tepada</option>
+                </select>
+              </label>
+              <button id="reset-layout" class="text-button wide" type="button">↺ Boshlang‘ich joylashuv</button>
               <label class="color-field">Asosiy rang<span class="color-control"><input id="team-color" type="color" value="#00ad76" /><b>TEAM</b></span></label>
               <label class="color-field">Accent<span class="color-control"><input id="accent-color" type="color" value="#d8ff43" /><b>ACCENT</b></span></label>
               <label class="wide logo-upload" for="logo-upload">
@@ -126,6 +167,7 @@
         </div>
 
         <footer class="control-dock">
+          <p id="save-status" role="alert" aria-live="polite"></p>
           <div class="tool-row">
             <button id="position-button" class="secondary-button" type="button"><span>⌖</span> JOYLASH</button>
             <button id="calibrate-button" class="secondary-button" type="button"><span>◇</span> 4 NUQTA</button>
@@ -154,9 +196,10 @@
           <div id="workflow-anchor"><span>03</span><p><b>PITCH ANCHOR</b><small id="workflow-anchor-copy">Fixed position</small></p></div>
         </div>
 
-        <div class="stage-viewport">
+        <div id="program-output" class="stage-viewport">
           <div id="broadcast-stage" class="broadcast-stage">
             <video id="stadium-video" muted loop playsinline></video>
+            <canvas id="live-tracking-frame" aria-label="Kalibrovka va tracking kadri"></canvas>
             <div class="video-fallback">
               <div class="stadium-lights"></div>
               <div class="fallback-field"><span class="halfway-line"></span><span class="center-circle"></span><span class="penalty-box left"></span><span class="penalty-box right"></span></div>
@@ -190,6 +233,10 @@
         </footer>
       </section>
     </main>
+    <script src="./smart-layout.js"></script>
+    <script src="./video-geometry.js"></script>
+    <script src="./project-data.js"></script>
+    <script src="./live-tracking.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": ".venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 5174",
-    "check": "node --check app.js && .venv/bin/python -m py_compile server.py"
+    "check": "node --check app.js && node --check live-tracking.js && node --check smart-layout.js && node --check project-data.js && node --check video-geometry.js && .venv/bin/python -m py_compile server.py live_tracking.py",
+    "test": "node --test tests/*.test.cjs && .venv/bin/python -m unittest discover -s tests -v"
   }
 }

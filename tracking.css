@@ -75,7 +75,7 @@
   animation-delay: calc(4.6s + var(--order) * .08s);
 }
 @keyframes card-stat-in { to { opacity: .82; bottom: 4%; } }
-.tactic-lines { display: none; }
+.tactic-lines { display: block; }
 
 /* Fixed-camera operator preset ------------------------------------------------ */
 .control-actions {
@@ -200,18 +200,17 @@
   display: block;
 }
 
-.broadcast-stage:fullscreen {
-  width: 100vw;
-  height: 100vh;
-  max-width: none;
-  max-height: none;
-  aspect-ratio: auto;
+#program-output:fullscreen { display:flex; align-items:center; justify-content:center; width:100vw; height:100vh; padding:0; background:#000; }
+#program-output:fullscreen .broadcast-stage {
+  width:min(100vw, calc(100vh * 16 / 9)); height:auto; aspect-ratio:16 / 9;
+  max-width:none; max-height:none; flex:none; border:0; border-radius:0;
 }
-
-.broadcast-stage:fullscreen .broadcast-top,
-.broadcast-stage:fullscreen .sponsor-strip {
-  font-size: 18px;
-}
+#program-output:fullscreen .stage-mode-badge { display:none; }
+#program-output:fullscreen .broadcast-top, #program-output:fullscreen .sponsor-strip { font-size:18px; }
+#save-status { color:#ffcf56; font-size:11px; line-height:1.4; margin:0 0 8px; }
+#save-status:empty { display:none; }
+.broadcast-stage.auto-preview .tactic-lines line { animation:none; opacity:.65; }
+.broadcast-stage.auto-unverified .tactic-lines, .broadcast-stage.auto-blocked .tactic-lines { opacity:0!important; }
 
 .preview-footer {
   width: 100%;
@@ -366,4 +365,43 @@
   0%, 28% { box-shadow: inset 0 -1px 0 rgba(255,255,255,0); }
   50% { box-shadow: inset 0 0 22px rgba(216,255,67,.34); }
   100% { box-shadow: inset 0 -1px 0 rgba(255,255,255,.05); }
+}
+.broadcast-stage #live-tracking-frame { display: none; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.broadcast-stage.live-frame #live-tracking-frame { display: block; }
+.broadcast-stage.calibration-mode::after { position: absolute; z-index: 30; bottom: 12px; left: 50%; transform: translateX(-50%); padding: 8px 12px; background: #07101de8; color: var(--accent); font-size: 11px; white-space: nowrap; pointer-events: none; }
+.broadcast-stage.track-lost .player-card,
+.broadcast-stage.track-lost .intro-card,
+.broadcast-stage.track-lost .sponsor-strip,
+.broadcast-stage.track-lost .tactic-lines { opacity: 0 !important; }
+.broadcast-stage.sideways-layout .player-card { width: 7%; height: 15%; scale: 1; rotate: 0deg; }
+.broadcast-stage.sideways-layout .player-name { bottom: 19%; font-size: clamp(7px, .8vw, 13px); }
+.broadcast-stage.sideways-layout .card-stats { bottom: 3%; }
+.broadcast-stage.auto-layout .player-card {
+  width: var(--auto-width, 90px); height: var(--auto-height, 120px);
+  scale: 1; rotate: 0deg; transform-origin: center bottom;
+  transform: translate(-50%, -100%);
+  transition: left .08s linear, top .08s linear;
+}
+.broadcast-stage.auto-layout .player-card::before { content: ''; position: absolute; left: 20%; bottom: -3px; width: 60%; height: 6px; background: #0008; border-radius: 50%; filter: blur(2px); }
+.broadcast-stage.auto-layout .player-card .player-name { bottom: 18%; font-size: var(--auto-name-size); line-height: 1.1; }
+.broadcast-stage.auto-layout .player-card .player-number { font-size: 17px; }
+.broadcast-stage.auto-layout .player-card .card-stats { bottom: 3% !important; font-size: 9px; line-height: 1.1; }
+.broadcast-stage.auto-layout[data-auto-mode="no-stats"] .card-stats,
+.broadcast-stage.auto-layout[data-auto-mode="compact"] .card-stats { display: none; }
+.broadcast-stage.auto-layout[data-auto-mode="no-stats"] .player-name { bottom: 7%; }
+.broadcast-stage.auto-layout[data-auto-mode="compact"] .player-image { display: none; }
+.broadcast-stage.auto-layout[data-auto-mode="compact"] .card-shape { clip-path: none; border-radius: 4px; border-top-width: 1px; }
+.broadcast-stage.auto-layout[data-auto-mode="compact"] .player-number { left: 5px; top: 6px; font-size: 13px; line-height: 15px; }
+.broadcast-stage.auto-layout[data-auto-mode="compact"] .player-name { left: 26px; right: 4px; top: 7px; bottom: auto; font-size: 11px; line-height: 13px; }
+.broadcast-stage.auto-layout.on-air .player-card { animation-name: auto-card-rise; }
+.broadcast-stage.auto-layout.auto-preview .player-card { opacity: 1; transform: translate(-50%, -100%); animation: none; }
+.broadcast-stage.auto-layout.auto-preview .card-stats { opacity: .9; }
+.broadcast-stage.auto-layout.auto-preview .intro-card,
+.broadcast-stage.auto-layout.auto-preview .sponsor-strip { opacity: 0 !important; }
+.broadcast-stage.auto-blocked .player-card, .broadcast-stage.auto-blocked .intro-card, .broadcast-stage.auto-blocked .sponsor-strip,
+.broadcast-stage.auto-unverified .player-card, .broadcast-stage.auto-unverified .intro-card, .broadcast-stage.auto-unverified .sponsor-strip { opacity: 0 !important; }
+.broadcast-stage.auto-calibration::after { content: attr(data-calibration-hint); max-width: 95%; white-space: normal; text-align: center; }
+@keyframes auto-card-rise {
+  0% { opacity: 0; transform: translate(-50%, -65%) scale(.6); }
+  100% { opacity: 1; transform: translate(-50%, -100%) scale(1); }
 }
